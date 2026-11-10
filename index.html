@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>HEMA Reaction Trainer</title>
+<style>
+:root{--bg:#e6ebef;--fg:#13202c;--mut:#566574;--card:#f6f8fa;--line:#c3ced8;--acc:#1d4f91;--ok:#1f7a3d;--bad:#b3261e;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1923;--fg:#e4ebf1;--mut:#8fa1b1;--card:#16242f;--line:#2a3c4b;--acc:#d6a84a;--ok:#5cc07a;--bad:#ef6b5f;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0e1923;--fg:#e4ebf1;--mut:#8fa1b1;--card:#16242f;--line:#2a3c4b;--acc:#d6a84a;--ok:#5cc07a;--bad:#ef6b5f;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 Georgia,"Times New Roman",serif}
+main{max-width:980px;margin:0 auto;padding:16px}
+h1{font-size:1.5rem;margin:.2rem 0}
+p.sub{color:var(--mut);margin:0 0 14px;max-width:60ch}
+.grid{display:grid;grid-template-columns:1.5fr 1fr;gap:14px}
+@media(max-width:760px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px}
+#stage{min-height:300px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;transition:background .12s,border-color .12s}
+#stage.cue{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 14%,var(--card))}
+#stage.ok{border-color:var(--ok)}#stage.bad{border-color:var(--bad)}
+#glyph{font-size:min(34vw,200px);line-height:1;font-family:system-ui,sans-serif;font-weight:700;color:var(--acc)}
+#stage.ok #glyph{color:var(--ok)}#stage.bad #glyph{color:var(--bad)}
+#msg{font-size:1.2rem;min-height:1.6em}#sub2{color:var(--mut);min-height:1.5em}
+button{font:inherit;padding:9px 14px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer}
+button.p{background:var(--acc);border-color:var(--acc);color:var(--bg);font-weight:700}
+button:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
+label{font-size:.92rem;color:var(--mut);display:flex;gap:6px;align-items:center}
+#vw{position:relative;aspect-ratio:4/3;display:none}video,#ov{position:absolute;inset:0;width:100%;height:100%;border-radius:6px}video{background:#000;transform:scaleX(-1);object-fit:fill}#ov{pointer-events:none}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin:3px 0 8px}.bar i{display:block;height:100%;width:0;background:var(--acc)}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-width:260px}
+.pad button{padding:12px 0;font-size:1.1rem}
+table{border-collapse:collapse;width:100%;font-size:.95rem}td,th{padding:5px 8px;border-bottom:1px solid var(--line);text-align:left}
+.sm{font-size:.88rem;color:var(--mut)}
+</style></head><body><main>
+<h1>HEMA Reaction Trainer</h1>
+<p class="sub">An arrow shows what your opponent just did. Answer with the same move—except forward and back, which flip: if they advance, you retreat; if they retreat, you advance.</p>
+<div class="grid">
+<div>
+<div id="stage" class="card" aria-live="polite"><div id="glyph">⚔</div><div id="msg">Ready when you are.</div><div id="sub2">Press Start session.</div></div>
+<div class="row"><button class="p" id="start">Start session</button><button id="stop">Stop</button><label>Rounds <input id="total" type="number" min="5" max="100" value="20" style="width:60px"></label></div>
+<div class="card" id="summary" hidden></div>
+</div>
+<div>
+<div class="card">
+<div class="row"><button id="camBtn">Turn on camera tracking</button><button id="calBtn">Capture background</button></div><label><input id="ovOn" type="checkbox" checked> Show tracking overlay</label>
+<div id="vw"><video id="vid" playsinline muted></video><canvas id="ov"></canvas></div>
+<p class="sm" id="camNote">Stand 2–3 m from the camera so your whole body is in frame. Keyboard and buttons work without a camera.</p>
+<label>Sensitivity <input id="sens" type="range" min="0.4" max="2.5" step="0.1" value="1"></label>
+<label><input id="mirror" type="checkbox"> Mirror left/right (opponent’s left = your right)</label>
+<div class="sm">Live motion</div><div class="bar"><i id="mM"></i></div>
+<div class="sm">Sideways / depth progress this round</div><div class="bar"><i id="mX"></i></div><div class="bar"><i id="mD"></i></div>
+</div>
+<div class="card" style="margin-top:14px"><div class="sm">Your response (keys: arrows, Space = stance)</div>
+<div class="pad" style="margin-top:6px"><span></span><button data-a="fwd" aria-label="Advance">↑ Adv</button><span></span><button data-a="left" aria-label="Left">←</button><button data-a="stance" aria-label="Change stance">⇋</button><button data-a="right" aria-label="Right">→</button><span></span><button data-a="back" aria-label="Retreat">↓ Ret</button><span></span></div></div>
+</div></div>
+<script>
+const $=id=>document.getElementById(id);
+const CUES={left:['←','Opponent steps left'],right:['→','Opponent steps right'],up:['↑','Opponent advances'],down:['↓','Opponent retreats'],stance:['⇋','Opponent changes stance']};
+const NAMES={left:'step left',right:'step right',fwd:'advance',back:'retreat',stance:'change stance'};
+const needOf=c=>{const m=$('mirror').checked;return{left:m?'right':'left',right:m?'left':'right',up:'back',down:'fwd',stance:'stance'}[c]};
+let S={phase:'idle',n:0,total:20,log:[],cue:null,need:null,t0:0,onset:null,acc:null,timer:null,last:null};
+let AC=null;
+function beep(){try{if(!AC)AC=new(window.AudioContext||window.webkitAudioContext)();const o=AC.createOscillator(),g=AC.createGain();o.frequency.value=720;g.gain.value=.08;o.connect(g);g.connect(AC.destination);o.start();o.stop(AC.currentTime+.08)}catch(e){}}
+function show(gl,m,s,cls){$('glyph').textContent=gl;$('msg').textContent=m;$('sub2').textContent=s||'';$('stage').className='card '+(cls||'')}
+function start(){clearTimeout(S.timer);beep();S={...S,phase:'wait',n:0,total:Math.max(5,Math.min(100,+$('total').value||20)),log:[],last:null};$('summary').hidden=true;next()}
+function stop(){clearTimeout(S.timer);S.phase='idle';show('⚔','Session stopped.','Press Start session.')}
+function next(){if(S.n>=S.total)return finish();S.phase='wait';show('◦','Hold your guard','Round '+(S.n+1)+' of '+S.total);S.timer=setTimeout(cue,1100+Math.random()*1100)}
+function cue(){const ks=Object.keys(CUES).filter(k=>k!==S.last);const c=ks[Math.floor(Math.random()*ks.length)];S.last=c;S.cue=c;S.need=needOf(c);S.phase='cue';S.t0=performance.now();S.onset=null;S.acc={x:0,d:0,low:0};S.b0=baseline();show(CUES[c][0],CUES[c][1],'Round '+(S.n+1)+' of '+S.total,'cue');beep();S.timer=setTimeout(timeout,2400)}
+function timeout(){if(S.phase!=='cue')return;const a=S.acc,tx=th().x,td=th().d;const dir=Math.max(Math.abs(a.x)/tx,Math.abs(a.d)/td);resolve(a.low>30/sens()&&dir<.6?'stance':null)}
+function resolve(got){if(S.phase!=='cue')return;clearTimeout(S.timer);S.phase='result';const now=performance.now();const rt=got?Math.round((S.onset!=null?S.onset:now)-S.t0):null;const ok=got===S.need;S.log.push({cue:S.cue,need:S.need,got,rt,ok});S.n++;
+const t=ok?'Correct: '+NAMES[S.need]+' · '+rt+' ms':got?'You did: '+NAMES[got]+' — needed: '+NAMES[S.need]:'Too slow — needed: '+NAMES[S.need];
+show(ok?'✓':'✗',t,ok?(rt<450?'Sharp.':rt<700?'Good.':'Slow—react earlier.'):'','');$('stage').classList.add(ok?'ok':'bad');S.timer=setTimeout(next,1100)}
+function finish(){S.phase='idle';const L=S.log,ok=L.filter(l=>l.ok),mean=a=>a.length?Math.round(a.reduce((s,l)=>s+l.rt,0)/a.length):'–';
+show('⚔','Session complete',Math.round(100*ok.length/L.length)+'% correct');
+const rows=Object.keys(CUES).map(k=>{const q=L.filter(l=>l.cue===k),o=q.filter(l=>l.ok);return'<tr><td>'+CUES[k][0]+' '+CUES[k][1].replace('Opponent ','')+'</td><td>'+o.length+'/'+q.length+'</td><td>'+mean(o)+(o.length?' ms':'')+'</td></tr>'}).join('');
+$('summary').innerHTML='<strong>Results</strong><p>Accuracy '+Math.round(100*ok.length/L.length)+'% · mean reaction '+mean(ok)+' ms · best '+(ok.length?Math.min(...ok.map(l=>l.rt)):'–')+' ms · missed '+L.filter(l=>!l.got).length+'</p><table><tr><th>Cue</th><th>Correct</th><th>Mean reaction</th></tr>'+rows+'</table>';$('summary').hidden=false}
+function respond(a){if(S.phase==='cue'){resolve(a)}}
+document.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>respond(b.dataset.a));
+addEventListener('keydown',e=>{const m={ArrowUp:'fwd',ArrowDown:'back',ArrowLeft:'left',ArrowRight:'right',' ':'stance'}[e.key];if(m&&e.target.tagName!=='INPUT'){e.preventDefault();respond(m)}});
+$('start').onclick=start;$('stop').onclick=stop;
+/* camera motion tracking: block-matching optical flow on a 64x48 grid */
+const W=64,H=48,B=8,R=3;let vid=$('vid'),cv=document.createElement('canvas'),cx,prev=null,cam=false,lastT=0;cv.width=W;cv.height=H;cx=cv.getContext('2d',{willReadFrequently:true});
+const sens=()=>+$('sens').value,th=()=>({x:7/sens(),d:4.5/sens()});
+function analyze(){cx.setTransform(-1,0,0,1,W,0);cx.drawImage(vid,0,0,W,H);const d=cx.getImageData(0,0,W,H).data,g=new Uint8Array(W*H);
+for(let i=0,j=0;i<g.length;i++,j+=4)g[i]=d[j]*.3+d[j+1]*.59+d[j+2]*.11;const p=prev;prev=g;if(!p)return null;
+const bl=[];let low=0;
+for(let by=0;by<H;by+=B)for(let bx=0;bx<W;bx+=B){let e=0;for(let y=0;y<B;y++)for(let x=0;x<B;x++){const i=(by+y)*W+bx+x;e+=Math.abs(g[i]-p[i])}
+if(e/(B*B)<9)continue;let best=1e9,bdx=0,bdy=0;
+for(let dy=-R;dy<=R;dy++)for(let dx=-R;dx<=R;dx++){const px=bx-dx,py=by-dy;if(px<0||py<0||px+B>W||py+B>H)continue;let s=0;for(let y=0;y<B;y++)for(let x=0;x<B;x++)s+=Math.abs(g[(by+y)*W+bx+x]-p[(py+y)*W+px+x]);if(s<best){best=s;bdx=dx;bdy=dy}}
+bl.push([bx+B/2,by+B/2,bdx,bdy]);if(by>=H/2)low++}
+const n=bl.length;if(n<2)return{n,low,dx:0,div:0,bl,g};let mx=0,my=0,sx=0;for(const b of bl){mx+=b[0];my+=b[1];sx+=b[2]}mx/=n;my/=n;let dv=0;
+for(const b of bl){const rx=b[0]-mx,ry=b[1]-my;dv+=(rx*b[2]+ry*b[3])/(Math.hypot(rx,ry)+4)}return{n,low,dx:sx/n,div:dv/n,bl,g}}
+function onFrame(r){const now=performance.now();if(calAcc)calStep(r.g);let nb=silhouette(r.g);if(nb&&body){nb.sc=body.sc*.6+nb.sc*.4;nb.cx=body.cx*.6+nb.cx*.4}body=nb;if(nb){hist.push(nb);if(hist.length>10)hist.shift()}else hist=[];drawOv(r);$('mM').style.width=Math.min(100,r.n*6)+'%';
+if(S.phase!=='cue'){$('mX').style.width='0';$('mD').style.width='0';return}
+if(now-S.t0<80)return;const a=S.acc;a.x+=r.dx;a.d+=r.div;a.low+=r.low;if(S.onset==null&&r.n>=3)S.onset=now;
+const t=th();let nx=Math.abs(a.x)/t.x,nd=Math.abs(a.d)/t.d,sx=a.x,sd=a.d;if(body&&S.b0){const rx=(body.cx-S.b0.cx)/W,rs=body.sc/S.b0.sc-1,x2=Math.abs(rx)/(.1/sens()),d2=Math.abs(rs)/(.09/sens());if(x2>nx){nx=x2;sx=rx}if(d2>nd){nd=d2;sd=rs}}$('mX').style.width=Math.min(100,nx*100)+'%';$('mD').style.width=Math.min(100,nd*100)+'%';
+if(Math.max(nx,nd)>=1)resolve(nx>=nd?(sx>0?'right':'left'):(sd>0?'fwd':'back'))}
+function loop(ts){if(cam&&ts-lastT>38&&vid.readyState>=2){lastT=ts;const r=analyze();if(r)onFrame(r)}requestAnimationFrame(loop)}
+$('camBtn').onclick=async()=>{if(cam){cam=false;vid.srcObject&&vid.srcObject.getTracks().forEach(t=>t.stop());$('vw').style.display='none';$('camBtn').textContent='Turn on camera tracking';return}
+try{const st=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:320,height:240},audio:false});vid.srcObject=st;await vid.play();$('vw').style.display='block';prev=null;cam=true;$('camBtn').textContent='Turn off camera';$('camNote').textContent='Tracking on. Prop the phone, tap “Capture background”, then step out of frame for a couple of seconds. After that the boxes lock onto your body.'}
+catch(e){$('camNote').textContent='Camera blocked ('+(e&&e.name||'error')+'). '+(e&&e.name==='NotAllowedError'?'This page is probably not allowed to use the camera inside the Claude viewer, or the permission is blocked for the site. ':'')+'You can still use the on-screen buttons.'}};
+requestAnimationFrame(loop);
+/* body tracker: background subtraction silhouette + overlay */
+let bg=null,body=null,hist=[],calN=0,calAcc=null;const ov=$('ov'),oc=ov.getContext('2d'),fgc=document.createElement('canvas'),TH=26;fgc.width=W;fgc.height=H;const fx=fgc.getContext('2d');
+function startCal(){bg=null;body=null;calN=-60;calAcc=new Float32Array(W*H);$('calBtn').disabled=true}
+function calStep(g){if(calN<0){calN++;$('camNote').textContent='Step out of the frame… '+Math.ceil(-calN/26)+'s';return}for(let i=0;i<g.length;i++)calAcc[i]+=g[i];if(++calN>=10){bg=calAcc.map(v=>v/10);calAcc=null;$('calBtn').disabled=false;$('camNote').textContent='Background captured. Step into the frame; the boxes should lock on.'}}
+function silhouette(g){if(!bg)return null;const cols=new Uint16Array(W),rows=new Uint16Array(H),m=fx.createImageData(W,H),md=m.data;let n=0,sx=0,sy=0;
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;if(Math.abs(g[i]-bg[i])>TH){cols[x]++;rows[y]++;n++;sx+=x;sy+=y;const j=i*4;md[j]=214;md[j+1]=168;md[j+2]=74;md[j+3]=255}else bg[i]+=(g[i]-bg[i])*.02}
+fx.putImageData(m,0,0);if(n<38)return null;if(n>W*H*.65){$('camNote').textContent='Background looks out of date or the phone moved. Tap “Capture background” again.';return null}
+const q=(a,len,f,rev)=>{let c=0;for(let k=0;k<len;k++){const i=rev?len-1-k:k;c+=a[i];if(c>=n*f)return i}return rev?0:len-1};
+const l=q(cols,W,.03),r=q(cols,W,.03,1),t=q(rows,H,.03),b=q(rows,H,.03,1),bh=b-t+1;if(r<=l||b<=t)return null;
+let hl=null,hr=null,head=null;const y1=Math.min(H-1,t+Math.round(bh*.75));
+for(let y=t;y<=y1;y++)for(let x=l;x<=r;x++)if(md[(y*W+x)*4+3]){if(!hl||x<hl[0])hl=[x,y];if(!hr||x>hr[0])hr=[x,y];if(!head)head=[x,y]}
+return{n,l,r,t,b,cx:sx/n,cy:sy/n,sc:Math.sqrt(n)+bh,hl,hr,head}}
+function baseline(){const h=hist.slice(-8);if(!h.length)return null;return{cx:h.reduce((s,v)=>s+v.cx,0)/h.length,sc:h.reduce((s,v)=>s+v.sc,0)/h.length}}
+function drawOv(r){const w=ov.clientWidth||320,h=ov.clientHeight||240;if(ov.width!==w||ov.height!==h){ov.width=w;ov.height=h}oc.clearRect(0,0,w,h);if(!$('ovOn').checked)return;const kx=w/W,ky=h/H;
+if(body){oc.globalAlpha=.3;oc.imageSmoothingEnabled=false;oc.drawImage(fgc,0,0,w,h);oc.globalAlpha=1}
+oc.lineWidth=1;oc.strokeStyle='rgba(255,255,255,.4)';oc.fillStyle='rgba(255,255,255,.08)';
+for(const b of r.bl){const x=(b[0]-B/2)*kx,y=(b[1]-B/2)*ky;oc.fillRect(x,y,B*kx,B*ky);oc.strokeRect(x+.5,y+.5,B*kx-1,B*ky-1);oc.beginPath();oc.moveTo(b[0]*kx,b[1]*ky);oc.lineTo((b[0]+b[2]*3)*kx,(b[1]+b[3]*3)*ky);oc.stroke()}
+oc.font='12px system-ui';
+if(body){oc.strokeStyle='rgba(214,168,74,.85)';oc.lineWidth=2;oc.strokeRect(body.l*kx,body.t*ky,(body.r-body.l+1)*kx,(body.b-body.t+1)*ky);
+oc.strokeStyle='rgba(90,220,255,.9)';oc.lineWidth=1.5;for(const p of [body.hl,body.hr,body.head]){if(!p)continue;oc.beginPath();oc.arc((p[0]+.5)*kx,(p[1]+.5)*ky,7,0,6.3);oc.stroke()}
+oc.beginPath();oc.moveTo(body.cx*kx-8,body.cy*ky);oc.lineTo(body.cx*kx+8,body.cy*ky);oc.moveTo(body.cx*kx,body.cy*ky-8);oc.lineTo(body.cx*kx,body.cy*ky+8);oc.moveTo(body.l*kx,(body.b+1)*ky);oc.lineTo((body.r+1)*kx,(body.b+1)*ky);oc.stroke();
+oc.fillStyle='rgba(255,255,255,.9)';const rel=S.b0&&S.phase==='cue'?body.sc/S.b0.sc:1;oc.fillText('size ×'+rel.toFixed(2),6,14)}
+else if(!bg){oc.fillStyle='rgba(255,255,255,.9)';oc.fillText('Tap “Capture background” for body boxes',6,14)}}
+$('calBtn').onclick=()=>{if(!cam){$('camNote').textContent='Turn the camera on first.';return}startCal()};
+</script></main></body></html>
